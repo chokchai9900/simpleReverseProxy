@@ -15,7 +15,7 @@ using ProxyKit;
 
 namespace simpleReverseProxy
 {
-    
+
     public class Startup
     {
         private IConfiguration Configuration;
@@ -51,10 +51,24 @@ namespace simpleReverseProxy
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
-            var appset = Configuration.GetSection("WebSorce").GetSection("github").Value;
-
+            string appset = Configuration.GetSection("WebSorce").GetSection("pornhub").Value;
+            string xx;
             app.RunProxy(context =>
             {
+                xx = context.Request.Host.Value;
+                if (xx.StartsWith("abc"))
+                {
+                    appset = Configuration.GetSection("WebSorce").GetSection("saladpuk").Value;
+                }
+                else if (xx.StartsWith("def"))
+                {
+                    appset = Configuration.GetSection("WebSorce").GetSection("youtube").Value;
+                }
+                else
+                {
+                    appset = Configuration.GetSection("WebSorce").GetSection("github").Value;
+                }
+
                 var forwardContext = context.ForwardTo(appset);
                 if (forwardContext.UpstreamRequest.Headers.Contains("X-Correlation-ID"))
                 {
