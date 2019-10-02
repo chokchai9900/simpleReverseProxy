@@ -11,18 +11,16 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Driver;
 using ProxyKit;
+using simpleReverseProxy.models;
 
 namespace simpleReverseProxy
 {
-    
+
     public class Startup
     {
         private IConfiguration Configuration;
-
-        // This method gets called by the runtime. Use this method to add services to the container.
-        // For more information on how to configure your application, visit https://go.microsoft.com/fwlink/?LinkID=398940
-
         public Startup(IHostingEnvironment env)
         {
             var builder = new ConfigurationBuilder()
@@ -44,18 +42,36 @@ namespace simpleReverseProxy
                 clientHandler.ClientCertificateOptions = ClientCertificateOption.Manual;
                 return clientHandler;
             }
-
             services.AddProxy(httpClientBuilder => httpClientBuilder.ConfigurePrimaryHttpMessageHandler((Func<HttpMessageHandler>)CreatePrimaryHandler));
+
         }
 
-        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
-            var appset = Configuration.GetSection("WebSorce").GetSection("github").Value;
+
+            var client = new MongoClient(Configuration.GetSection("MongoConnection:ConnectionString").Value);
+            var database = client.GetDatabase(Configuration.GetSection("MongoConnection:Database").Value);
+            var collection = database.GetCollection<Domain>("domains");
+
+            var uriWeb="";
+
+            //string subdomain;
 
             app.RunProxy(context =>
             {
-                var forwardContext = context.ForwardTo(appset);
+                var subdomain = context.Request.Host.Value;
+
+                if (!subdomain.StartsWith("localhost:5001"))
+                {
+                    var domain = subdomain.Split('.').First();
+                    uriWeb = collection.Find(it => it.domainName == domain).FirstOrDefault().urlWeb;
+                }
+                else
+                {
+                    uriWeb = Configuration.GetSection("WebSorce:github").Value;
+                }
+
+                var forwardContext = context.ForwardTo(uriWeb);
                 if (forwardContext.UpstreamRequest.Headers.Contains("X-Correlation-ID"))
                 {
                     forwardContext.UpstreamRequest.Headers.Add("X-Correlation-ID", Guid.NewGuid().ToString());
@@ -64,7 +80,7 @@ namespace simpleReverseProxy
             });
 
             app.RunProxy(context => context
-            .ForwardTo(appset)
+            .ForwardTo(uriWeb)
             .AddXForwardedHeaders()
             .ApplyCorrelationId()
             .Send());
