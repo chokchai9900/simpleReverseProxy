@@ -1,25 +1,22 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Net.Http;
-using System.Security.Cryptography.X509Certificates;
-using System.Threading.Tasks;
-using CacheCow.Common;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
 using ProxyKit;
 using simpleReverseProxy.models;
+using System;
+using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Security.Cryptography.X509Certificates;
 
 namespace simpleReverseProxy
 {
 
     public class Startup
     {
+
         private IConfiguration Configuration;
         public Startup(IHostingEnvironment env)
         {
@@ -48,12 +45,11 @@ namespace simpleReverseProxy
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
-
             var client = new MongoClient(Configuration.GetSection("MongoConnection:ConnectionString").Value);
             var database = client.GetDatabase(Configuration.GetSection("MongoConnection:Database").Value);
             var collection = database.GetCollection<Domain>("domains");
 
-            var uriWeb="";
+            var uriWeb = "";
 
             //string subdomain;
 
@@ -80,10 +76,10 @@ namespace simpleReverseProxy
             });
 
             app.RunProxy(context => context
-            .ForwardTo(uriWeb)
-            .AddXForwardedHeaders()
-            .ApplyCorrelationId()
-            .Send());
+             .ForwardTo(uriWeb)
+             .AddXForwardedHeaders()
+             .ApplyCorrelationId()
+             .Send());
         }
     }
     public static class CorrelationIdExtensions
