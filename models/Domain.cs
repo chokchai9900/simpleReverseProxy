@@ -1,14 +1,14 @@
 ﻿using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
+using System;
 
 namespace simpleReverseProxy.models
 {
     public class Domain
     {
-        [BsonId]
-        public ObjectId _id { get; set; }
-        public string domainName { get; set; }
-        public string urlWeb { get; set; }
-        public int __v { get; set; }
+        public string _id { get; set; }
+        public string ShortUrl { get; set; }
+        public string FullUrl { get; set; }
+        public DateTime CreationDateTime { get; set; }
     }
 }

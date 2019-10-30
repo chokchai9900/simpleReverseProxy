@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Driver;
@@ -16,8 +17,11 @@ namespace simpleReverseProxy
 
     public class Startup
     {
-
         private IConfiguration Configuration;
+        private UpstreamHost proxyUri;
+        private ForwardContext forwardContext;
+        public const string XCorrelationId = "X-Correlation-ID";
+
         public Startup(IHostingEnvironment env)
         {
             var builder = new ConfigurationBuilder()
@@ -31,6 +35,7 @@ namespace simpleReverseProxy
         {
             var certBytes = File.ReadAllBytes("./badssl.com-client.p12");
             var clientCertificate = new X509Certificate2(certBytes, "badssl.com");
+            services.AddProxy();
 
             HttpMessageHandler CreatePrimaryHandler()
             {
@@ -40,59 +45,46 @@ namespace simpleReverseProxy
                 return clientHandler;
             }
             services.AddProxy(httpClientBuilder => httpClientBuilder.ConfigurePrimaryHttpMessageHandler((Func<HttpMessageHandler>)CreatePrimaryHandler));
-
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
             var client = new MongoClient(Configuration.GetSection("MongoConnection:ConnectionString").Value);
             var database = client.GetDatabase(Configuration.GetSection("MongoConnection:Database").Value);
-            var collection = database.GetCollection<Domain>("domains");
+            var collection = database.GetCollection<Domain>("shortenurls");
 
-            var uriWeb = "";
+            var lastUriWeb = "";
+            var findUrl = new Domain();
+            
 
-            //string subdomain;
-
-            app.RunProxy(context =>
+            app.RunProxy(async context =>
             {
-                var subdomain = context.Request.Host.Value;
+                var getPath = context.Request.Path;
+                context.Request.Path = string.Empty;
 
-                if (!subdomain.StartsWith("localhost:5001"))
+                if (getPath.Value == "/")
                 {
-                    var domain = subdomain.Split('.').First();
-                    uriWeb = collection.Find(it => it.domainName == domain).FirstOrDefault().urlWeb;
+                    await context.Response.WriteAsync("Hello World!");
+                }
+
+                findUrl = collection.Find(it => it.ShortUrl == $"https://localhost:5001{getPath}").FirstOrDefault();
+                if (findUrl?.FullUrl != null)
+                {
+                    proxyUri = new UpstreamHost(findUrl.FullUrl);
+                    lastUriWeb = findUrl.FullUrl;
                 }
                 else
                 {
-                    uriWeb = Configuration.GetSection("WebSorce:github").Value;
+                    proxyUri = new UpstreamHost(lastUriWeb);
                 }
 
-                var forwardContext = context.ForwardTo(uriWeb);
-                if (forwardContext.UpstreamRequest.Headers.Contains("X-Correlation-ID"))
+                forwardContext = context.ForwardTo(proxyUri);
+                if (!forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
                 {
-                    forwardContext.UpstreamRequest.Headers.Add("X-Correlation-ID", Guid.NewGuid().ToString());
+                    forwardContext.UpstreamRequest.Headers.Add(XCorrelationId, Guid.NewGuid().ToString());
                 }
-                return forwardContext.Send();
+                return await forwardContext.Send();
             });
-
-            app.RunProxy(context => context
-             .ForwardTo(uriWeb)
-             .AddXForwardedHeaders()
-             .ApplyCorrelationId()
-             .Send());
-        }
-    }
-    public static class CorrelationIdExtensions
-    {
-        public const string XCorrelationId = "X-Correlation-ID";
-
-        public static ForwardContext ApplyCorrelationId(this ForwardContext forwardContext)
-        {
-            if (forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
-            {
-                forwardContext.UpstreamRequest.Headers.Add(XCorrelationId, Guid.NewGuid().ToString());
-            }
-            return forwardContext;
         }
     }
 }
