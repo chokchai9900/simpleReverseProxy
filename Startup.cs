@@ -56,11 +56,10 @@ namespace simpleReverseProxy
             var lastUriWeb = "";
             var findUrl = new Domain();
             
-
             app.RunProxy(async context =>
             {
                 var getPath = context.Request.Path;
-                context.Request.Path = string.Empty;
+                
 
                 if (getPath.Value == "/")
                 {
@@ -71,6 +70,7 @@ namespace simpleReverseProxy
                 if (findUrl?.FullUrl != null)
                 {
                     proxyUri = new UpstreamHost(findUrl.FullUrl);
+                    context.Request.Path = string.Empty;
                     lastUriWeb = findUrl.FullUrl;
                 }
                 else
@@ -79,7 +79,7 @@ namespace simpleReverseProxy
                 }
 
                 forwardContext = context.ForwardTo(proxyUri);
-                if (!forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
+                if (forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
                 {
                     forwardContext.UpstreamRequest.Headers.Add(XCorrelationId, Guid.NewGuid().ToString());
                 }
