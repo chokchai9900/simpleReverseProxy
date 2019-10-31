@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp2.2</TargetFramework>
     <AspNetCoreHostingModel>InProcess</AspNetCoreHostingModel>
+    <UserSecretsId>7fef3216-a335-441e-9c9d-fdab7d496d4c</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
