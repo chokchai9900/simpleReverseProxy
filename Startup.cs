@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography.X509Certificates;
+using System.Web;
 
 namespace simpleReverseProxy
 {
@@ -54,27 +55,28 @@ namespace simpleReverseProxy
             var database = client.GetDatabase("shorturldb");
             var collection = database.GetCollection<Domain>("shortenurls");
 
-            var lastUriWeb = "";
             var findUrl = new Domain();
             
             app.RunProxy(async context =>
             {
-                var getPath = context.Request.Path;
-
-                findUrl = collection.Find(it => it.ShortUrl == $"https://shortly-test.azurewebsites.net{getPath}").FirstOrDefault();
+                var getPath = context.Request.Path.Value.Split('/',options: StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                findUrl = collection.Find(it => it.ShortUrl == $"https://shortly-test.azurewebsites.net/{getPath}").FirstOrDefault();
 
                 if (findUrl?.FullUrl != null)
                 {
-                    proxyUri = new UpstreamHost(findUrl.FullUrl);
-                    lastUriWeb = findUrl.FullUrl;
-                    context.Request.Path = string.Empty;
-                    context.Request.Host = new HostString($"https://localhost:5001{getPath}");
-                    var x = getPath;
+                    proxyUri = new UpstreamHost($"{findUrl.FullUrl}");
+                    if (findUrl.FullUrl.Contains("?"))
+                    {
+                        var length = findUrl.FullUrl.IndexOf("?");
+                        var param = findUrl.FullUrl.Substring(length);
+                        context.Request.QueryString = new QueryString(param);
+                    }
+                    context.Request.Path = context.Request.Path.Value.Replace($"/{getPath}",string.Empty);
                 }
                
                 forwardContext = context.ForwardTo(proxyUri);
 
-                if (forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
+                if (!forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
                 {
                     forwardContext.UpstreamRequest.Headers.Add(XCorrelationId, Guid.NewGuid().ToString());
                 }
