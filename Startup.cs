@@ -18,7 +18,7 @@ namespace simpleReverseProxy
     public class Startup
     {
         private IConfiguration Configuration;
-        private UpstreamHost proxyUri;
+        private string proxyUri;
         private ForwardContext forwardContext;
         public const string XCorrelationId = "X-Correlation-ID";
 
@@ -33,53 +33,54 @@ namespace simpleReverseProxy
 
         public void ConfigureServices(IServiceCollection services)
         {
-            var certBytes = File.ReadAllBytes("./badssl.com-client.p12");
-            var clientCertificate = new X509Certificate2(certBytes, "badssl.com");
+            //var certBytes = File.ReadAllBytes("./badssl.com-client.p12");
+            //var clientCertificate = new X509Certificate2(certBytes, "badssl.com");
             services.AddProxy();
-
-            HttpMessageHandler CreatePrimaryHandler()
-            {
-                var clientHandler = new HttpClientHandler();
-                clientHandler.ClientCertificates.Add(clientCertificate);
-                clientHandler.ClientCertificateOptions = ClientCertificateOption.Manual;
-                return clientHandler;
-            }
-            services.AddProxy(httpClientBuilder => httpClientBuilder.ConfigurePrimaryHttpMessageHandler((Func<HttpMessageHandler>)CreatePrimaryHandler));
+            //HttpMessageHandler CreatePrimaryHandler()
+            //{
+            //    var clientHandler = new HttpClientHandler();
+            //    clientHandler.ClientCertificates.Add(clientCertificate);
+            //    clientHandler.ClientCertificateOptions = ClientCertificateOption.Manual;
+            //    return clientHandler;
+            //}
+            //services.AddProxy(httpClientBuilder => httpClientBuilder.ConfigurePrimaryHttpMessageHandler((Func<HttpMessageHandler>)CreatePrimaryHandler));
         }
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
-            var client = new MongoClient(Configuration.GetSection("MongoConnection:ConnectionString").Value);
-            var database = client.GetDatabase(Configuration.GetSection("MongoConnection:Database").Value);
-            var collection = database.GetCollection<Domain>("shortenurls");
+            var client = new MongoClient("mongodb://admin:mana1234@ds016098.mlab.com:16098/shortenurl?retryWrites=false");
+            var database = client.GetDatabase("shortenurl");
+            var collection = database.GetCollection<ShortLink>("shorten");
 
             var lastUriWeb = "";
-            var findUrl = new Domain();
-            
+            var findUrl = new ShortLink();
+
             app.RunProxy(async context =>
             {
-                var getPath = context.Request.Path;
-                
-
-                if (getPath.Value == "/")
+                var request = context.Request.Path.Value;
+                if (context.Request.Path.Value == "/")
                 {
-                    await context.Response.WriteAsync("Hello World!");
-                }
-
-                findUrl = collection.Find(it => it.ShortUrl == $"https://localhost:5001{getPath}").FirstOrDefault();
-                if (findUrl?.FullUrl != null)
-                {
-                    proxyUri = new UpstreamHost(findUrl.FullUrl);
-                    context.Request.Path = string.Empty;
-                    lastUriWeb = findUrl.FullUrl;
+                    proxyUri = "http://generateshorturl.azurewebsites.net/";
+                    lastUriWeb = "http://generateshorturl.azurewebsites.net/";
                 }
                 else
                 {
-                    proxyUri = new UpstreamHost(lastUriWeb);
+                    findUrl = collection.Find(it => it.ShortenUrl == $"https://testmana.azurewebsites.net{request}").FirstOrDefault();
+                    if (findUrl?.FullUrl != null)
+                    {
+                        proxyUri = findUrl.FullUrl;
+                        if (proxyUri.Contains("?"))
+                        {
+                            var positionOFParam = proxyUri.IndexOf("?");
+                            var param = proxyUri.Substring(positionOFParam);
+                            context.Request.QueryString = new QueryString(param);
+                        }
+                        context.Request.Path = context.Request.Path.Value.Replace($"{request}", string.Empty);
+                    }
                 }
 
                 forwardContext = context.ForwardTo(proxyUri);
-                if (forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
+                if (!forwardContext.UpstreamRequest.Headers.Contains(XCorrelationId))
                 {
                     forwardContext.UpstreamRequest.Headers.Add(XCorrelationId, Guid.NewGuid().ToString());
                 }
